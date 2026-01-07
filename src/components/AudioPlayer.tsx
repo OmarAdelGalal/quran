@@ -21,6 +21,7 @@ const AudioPlayer = ({ reciter, surah, onPrevious, onNext }: AudioPlayerProps) =
   const [duration, setDuration] = useState(0);
   const [volume, setVolume] = useState(1);
   const [isMuted, setIsMuted] = useState(false);
+  const [hasAudio, setHasAudio] = useState<boolean | null>(null); // null = unknown
 
   const audioUrl = reciter && surah
     ? `${reciter.audioBaseUrl}/${surah.number.toString().padStart(3, "0")}.mp3`
@@ -32,6 +33,17 @@ const AudioPlayer = ({ reciter, surah, onPrevious, onNext }: AudioPlayerProps) =
       audioRef.current.load();
       setIsPlaying(false);
       setCurrentTime(0);
+
+      // Check whether the audio file actually exists (HEAD request).
+      setHasAudio(null);
+      fetch(audioUrl, { method: "HEAD" })
+        .then((res) => {
+          if (res.ok) setHasAudio(true);
+          else setHasAudio(false);
+        })
+        .catch(() => setHasAudio(false));
+    } else {
+      setHasAudio(null);
     }
   }, [audioUrl]);
 
@@ -42,27 +54,44 @@ const AudioPlayer = ({ reciter, surah, onPrevious, onNext }: AudioPlayerProps) =
     const updateTime = () => setCurrentTime(audio.currentTime);
     const updateDuration = () => setDuration(audio.duration);
     const handleEnded = () => setIsPlaying(false);
+    const handleError = () => {
+      setHasAudio(false);
+      setIsPlaying(false);
+    };
 
     audio.addEventListener("timeupdate", updateTime);
     audio.addEventListener("loadedmetadata", updateDuration);
     audio.addEventListener("ended", handleEnded);
+    audio.addEventListener("error", handleError);
 
     return () => {
       audio.removeEventListener("timeupdate", updateTime);
       audio.removeEventListener("loadedmetadata", updateDuration);
       audio.removeEventListener("ended", handleEnded);
+      audio.removeEventListener("error", handleError);
     };
   }, []);
 
   const togglePlay = () => {
-    if (!audioRef.current || !audioUrl) return;
-    
+    if (!audioRef.current || !audioUrl || hasAudio === false) return;
+
     if (isPlaying) {
       audioRef.current.pause();
-    } else {
-      audioRef.current.play();
+      setIsPlaying(false);
+      return;
     }
-    setIsPlaying(!isPlaying);
+
+    const playPromise = audioRef.current.play();
+    if (playPromise && typeof playPromise.then === "function") {
+      playPromise
+        .then(() => setIsPlaying(true))
+        .catch(() => {
+          // Play failed (autoplay policy, etc.)
+          setIsPlaying(false);
+        });
+    } else {
+      setIsPlaying(true);
+    }
   };
 
   const handleSeek = (value: number[]) => {
@@ -117,8 +146,9 @@ const AudioPlayer = ({ reciter, surah, onPrevious, onNext }: AudioPlayerProps) =
               </p>
               <p className="text-sm text-muted-foreground">
                 {reciter?.arabicName || "اختر قارئ"}
-              </p>
-            </div>
+              </p>              {hasAudio === false && (
+                <p className="text-xs text-destructive mt-1">ملف الصوت غير متوفر لهذه السورة</p>
+              )}            </div>
           </div>
 
           {/* Volume Control */}
