@@ -1,10 +1,18 @@
 @import url('https://fonts.googleapis.com/css2?family=Amiri:ital,wght@0,400;0,700;1,400;1,700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Amiri:ital,wght@0,400;0,700;1,400&display=swap');
 
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+/* ... باقي الملف كما هو ... */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
+  .font-amiri {
+  font-family: 'Amiri', serif;
+}
   :root {
     --background: 220 20% 8%;
     --foreground: 45 50% 95%;

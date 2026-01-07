@@ -23,48 +23,83 @@ const AudioPlayer = ({ reciter, surah, onPrevious, onNext }: AudioPlayerProps) =
   const [isMuted, setIsMuted] = useState(false);
   const [hasAudio, setHasAudio] = useState<boolean | null>(null); // null = unknown
 
-  const audioUrl = reciter && surah
-    ? `${reciter.audioBaseUrl}/${surah.number.toString().padStart(3, "0")}.mp3`
-    : null;
+  const [audioUrl, setAudioUrl] = useState<string | null>(null);
+
+  const buildCandidates = (base: string, num: number) => {
+    const n = num.toString().padStart(3, "0");
+    return [
+      `${base}/${n}.mp3`,
+      `${base}/${n}-.mp3`,
+      `${base}/${n}.MP3`,
+      `${base}/${n}-.MP3`,
+    ];
+  };
 
   useEffect(() => {
-    if (audioRef.current && audioUrl) {
-      audioRef.current.src = audioUrl;
-      audioRef.current.load();
-      setIsPlaying(false);
-      setCurrentTime(0);
-
-      // Check whether the audio file actually exists (HEAD request).
+    if (!reciter || !surah) {
+      setAudioUrl(null);
       setHasAudio(null);
-      // Try HEAD first; if server rejects HEAD (405), fall back to a GET for the first byte.
-      fetch(audioUrl, { method: "HEAD" })
-        .then(async (res) => {
+      if (audioRef.current) audioRef.current.src = "";
+      return;
+    }
+
+    let cancelled = false;
+    setAudioUrl(null);
+    setHasAudio(null);
+
+    const tryCandidates = async () => {
+      const candidates = buildCandidates(reciter.audioBaseUrl, surah.number);
+      for (const url of candidates) {
+        try {
+          const res = await fetch(url, { method: "HEAD" });
           if (res.ok) {
+            if (cancelled) return;
+            setAudioUrl(url);
             setHasAudio(true);
+            if (audioRef.current) {
+              audioRef.current.src = url;
+              audioRef.current.load();
+              setIsPlaying(false);
+              setCurrentTime(0);
+            }
+            return;
           } else if (res.status === 405) {
-            // Some static hosts disallow HEAD — try GET for first byte
+            // Some hosts disallow HEAD — try GET for first byte
             try {
-              const r = await fetch(audioUrl, {
+              const r = await fetch(url, {
                 method: "GET",
                 headers: { Range: "bytes=0-0" },
               });
-              setHasAudio(r.ok);
+              if (r.ok) {
+                if (cancelled) return;
+                setAudioUrl(url);
+                setHasAudio(true);
+                if (audioRef.current) {
+                  audioRef.current.src = url;
+                  audioRef.current.load();
+                  setIsPlaying(false);
+                  setCurrentTime(0);
+                }
+                return;
+              }
             } catch (err) {
               console.error("Audio availability check GET failed", err);
-              setHasAudio(false);
             }
-          } else {
-            setHasAudio(false);
           }
-        })
-        .catch((err) => {
-          console.error("Audio availability check failed", err);
-          setHasAudio(false);
-        });
-    } else {
-      setHasAudio(null);
-    }
-  }, [audioUrl]);
+        } catch (err) {
+          console.error("Audio availability check failed for", url, err);
+        }
+      }
+
+      if (!cancelled) setHasAudio(false);
+    };
+
+    tryCandidates();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [reciter, surah]);
 
   useEffect(() => {
     const audio = audioRef.current;

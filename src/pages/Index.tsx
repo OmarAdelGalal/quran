@@ -4,6 +4,7 @@ import Header from "@/components/Header";
 import ReciterCard from "@/components/ReciterCard";
 import SurahList from "@/components/SurahList";
 import AudioPlayer from "@/components/AudioPlayer";
+import SurahView from "@/components/SurahView"; // <--- إضافة الاستيراد
 import { reciters, Reciter } from "@/data/reciters";
 import { surahs, Surah } from "@/data/surahs";
 
@@ -55,12 +56,19 @@ const Index = () => {
         </section>
 
         {/* Surahs Section */}
-        <section className="max-w-2xl mx-auto">
+        <section className="max-w-2xl mx-auto mb-8">
           <SurahList
             selectedSurah={selectedSurah}
             onSurahSelect={setSelectedSurah}
           />
         </section>
+
+        {/* Surah View Section (المصحف المقروء) */}
+        {selectedSurah && (
+          <section>
+             <SurahView surahNumber={selectedSurah.number} />
+          </section>
+        )}
       </main>
 
       <AudioPlayer
@@ -69,11 +77,6 @@ const Index = () => {
         onPrevious={handlePreviousSurah}
         onNext={handleNextSurah}
       />
-      <div className="mt-0 text-center bottom-15 p-6">
-      <h3 className="text-lg font-semibold">created by </h3>       <a href="https://github.com/OmarAdelGalal" className="text-blue-500 hover:underline">omar adel </a>
-      <h3 className="text-lg font-semibold">صدقه جاريه عني و عن كل واحد ينشر الويب سايت </h3>
-      <h3 className="text-lg font-semibold">Sponsored by </h3> <a href="https://waquakcode.com" className="text-blue-500 hover:underline">Waquak the new code </a>
-      </div>
     </div>
   );
 };
