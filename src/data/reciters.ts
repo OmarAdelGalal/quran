@@ -33,4 +33,12 @@ export const reciters: Reciter[] = [
     audioBaseUrl: "https://server10.mp3quran.net/minsh",
     description: "من أعظم قراء القرآن الكريم",
   },
+  {
+    id: "ahmed-kaseb",
+    name: "Ahmed Al-Kaseb",
+    arabicName: "أحمد الكاسب",
+    description: "تلاوة هادئة تأخذك لعالم آخر",
+    image: "https://imgs.search.brave.com/qR2YBdd3NDId0feESbx5g-MW7f2x0o4FWbJIz5Gp4qw/rs:fit:500:0:1:0/g:ce/aHR0cHM6Ly9pMS5z/bmRjZG4uY29tL2Fy/dHdvcmtzLXoyVld5/ZkVRcUswbjFLb1ot/aVVuY253LXQxMDgw/eDEwODAuanBn", // تأكد من وضع الصورة في هذا المسار
+    audioBaseUrl: "public\\audio\\ahmed-kaseb", // تأكد من وضع ملفات الصوت هنا
+  },
 ];
