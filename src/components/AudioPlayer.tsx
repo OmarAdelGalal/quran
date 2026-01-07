@@ -36,12 +36,31 @@ const AudioPlayer = ({ reciter, surah, onPrevious, onNext }: AudioPlayerProps) =
 
       // Check whether the audio file actually exists (HEAD request).
       setHasAudio(null);
+      // Try HEAD first; if server rejects HEAD (405), fall back to a GET for the first byte.
       fetch(audioUrl, { method: "HEAD" })
-        .then((res) => {
-          if (res.ok) setHasAudio(true);
-          else setHasAudio(false);
+        .then(async (res) => {
+          if (res.ok) {
+            setHasAudio(true);
+          } else if (res.status === 405) {
+            // Some static hosts disallow HEAD — try GET for first byte
+            try {
+              const r = await fetch(audioUrl, {
+                method: "GET",
+                headers: { Range: "bytes=0-0" },
+              });
+              setHasAudio(r.ok);
+            } catch (err) {
+              console.error("Audio availability check GET failed", err);
+              setHasAudio(false);
+            }
+          } else {
+            setHasAudio(false);
+          }
         })
-        .catch(() => setHasAudio(false));
+        .catch((err) => {
+          console.error("Audio availability check failed", err);
+          setHasAudio(false);
+        });
     } else {
       setHasAudio(null);
     }
@@ -205,13 +224,16 @@ const AudioPlayer = ({ reciter, surah, onPrevious, onNext }: AudioPlayerProps) =
             variant="gold"
             size="xl"
             onClick={togglePlay}
-            disabled={!audioUrl}
+            disabled={!audioUrl || hasAudio === false || hasAudio === null}
             className={cn(
               "rounded-full w-16 h-16",
-              !audioUrl && "opacity-50 cursor-not-allowed"
+              (!audioUrl || hasAudio === false || hasAudio === null) && "opacity-50 cursor-not-allowed"
             )}
           >
-            {isPlaying ? (
+            {hasAudio === null ? (
+              // Checking availability
+              <span className="inline-block animate-pulse text-sm">...</span>
+            ) : isPlaying ? (
               <Pause className="h-8 w-8" />
             ) : (
               <Play className="h-8 w-8 mr-[-2px]" />
