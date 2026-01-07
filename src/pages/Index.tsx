@@ -69,6 +69,11 @@ const Index = () => {
         onPrevious={handlePreviousSurah}
         onNext={handleNextSurah}
       />
+      <div className="mt-0 text-center bottom-15 p-6">
+      <h3 className="text-lg font-semibold">created by </h3>       <a href="https://github.com/OmarAdelGalal" className="text-blue-500 hover:underline">omar adel </a>
+      <h3 className="text-lg font-semibold">صدقه جاريه عني و عن كل واحد ينشر الويب سايت </h3>
+      <h3 className="text-lg font-semibold">Sponsored by </h3> <a href="https://waquakcode.com" className="text-blue-500 hover:underline">Waquak the new code </a>
+      </div>
     </div>
   );
 };
