@@ -8,6 +8,7 @@ import { Surah } from "@/data/surahs";
 import { Radio } from "@/data/radios";
 import { cn } from "@/lib/utils";
 import { ZekrItem } from "@/data/sabahMasaaAzkar";
+import { toast } from "sonner";
 
 interface AudioPlayerProps {
   reciter: Reciter | null;
@@ -40,12 +41,18 @@ const AudioPlayer = ({
   const activeZekrRef = useRef(activeZekr);
   const zekrRemainingRepeatsRef = useRef(zekrRemainingRepeats);
   const setZekrRemainingRepeatsRef = useRef(setZekrRemainingRepeats);
+  const radioRef = useRef(radio);
+  const reciterRef = useRef(reciter);
+  const surahRef = useRef(surah);
 
   useEffect(() => {
     activeZekrRef.current = activeZekr;
     zekrRemainingRepeatsRef.current = zekrRemainingRepeats;
     setZekrRemainingRepeatsRef.current = setZekrRemainingRepeats;
-  }, [activeZekr, zekrRemainingRepeats, setZekrRemainingRepeats]);
+    radioRef.current = radio;
+    reciterRef.current = reciter;
+    surahRef.current = surah;
+  }, [activeZekr, zekrRemainingRepeats, setZekrRemainingRepeats, radio, reciter, surah]);
 
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -53,8 +60,24 @@ const AudioPlayer = ({
   const [volume, setVolume] = useState(1);
   const [isMuted, setIsMuted] = useState(false);
   const [hasAudio, setHasAudio] = useState<boolean | null>(null); // null = unknown
-
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
+
+  // Reconnection and retry states
+  const [isRetrying, setIsRetrying] = useState(false);
+  const [retryMessage, setRetryMessage] = useState("");
+
+  const lastKnownTimeRef = useRef(0);
+  const isPlayingRef = useRef(false);
+  const audioUrlRef = useRef<string | null>(null);
+  const recoveryAttemptRef = useRef(0);
+
+  useEffect(() => {
+    isPlayingRef.current = isPlaying;
+  }, [isPlaying]);
+
+  useEffect(() => {
+    audioUrlRef.current = audioUrl;
+  }, [audioUrl]);
 
   const buildCandidates = (base: string, num: number) => {
     const n = num.toString().padStart(3, "0");
@@ -67,6 +90,12 @@ const AudioPlayer = ({
   };
 
   useEffect(() => {
+    // Reset recovery attempts and last known time when track source changes
+    lastKnownTimeRef.current = 0;
+    recoveryAttemptRef.current = 0;
+    setIsRetrying(false);
+    setRetryMessage("");
+
     if (activeZekr) {
       setAudioUrl(activeZekr.AUDIO);
       setHasAudio(true);
@@ -114,59 +143,84 @@ const AudioPlayer = ({
 
     const tryCandidates = async () => {
       const candidates = buildCandidates(reciter.audioBaseUrl, surah.number);
-      for (const url of candidates) {
-        try {
-          const res = await fetch(url, { method: "HEAD" });
-          if (res.ok) {
-            if (cancelled) return;
-            setAudioUrl(url);
-            setHasAudio(true);
-            if (audioRef.current) {
-              audioRef.current.src = url;
-              audioRef.current.load();
-              const playPromise = audioRef.current.play();
-              if (playPromise && typeof playPromise.then === "function") {
-                playPromise.then(() => setIsPlaying(true)).catch(() => setIsPlaying(false));
-              } else {
-                setIsPlaying(true);
-              }
-              setCurrentTime(0);
-            }
-            return;
-          } else if (res.status === 405) {
-            // Some hosts disallow HEAD — try GET for first byte
-            try {
-              const r = await fetch(url, {
-                method: "GET",
-                headers: { Range: "bytes=0-0" },
-              });
-              if (r.ok) {
-                if (cancelled) return;
-                setAudioUrl(url);
-                setHasAudio(true);
-                if (audioRef.current) {
-                  audioRef.current.src = url;
-                  audioRef.current.load();
-                  const playPromise = audioRef.current.play();
-                  if (playPromise && typeof playPromise.then === "function") {
-                    playPromise.then(() => setIsPlaying(true)).catch(() => setIsPlaying(false));
-                  } else {
-                    setIsPlaying(true);
-                  }
-                  setCurrentTime(0);
+      let success = false;
+      const maxAttempts = 3;
+
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        if (cancelled) return;
+
+        if (attempt > 1) {
+          setIsRetrying(true);
+          setRetryMessage(`جارٍ الاتصال بالخادم (محاولة ${attempt} من ${maxAttempts})...`);
+          await new Promise((resolve) => setTimeout(resolve, 3000));
+          if (cancelled) return;
+        }
+
+        for (const url of candidates) {
+          try {
+            const res = await fetch(url, { method: "HEAD" });
+            if (res.ok) {
+              if (cancelled) return;
+              setAudioUrl(url);
+              setHasAudio(true);
+              setIsRetrying(false);
+              setRetryMessage("");
+              recoveryAttemptRef.current = 0;
+              if (audioRef.current) {
+                audioRef.current.src = url;
+                audioRef.current.load();
+                const playPromise = audioRef.current.play();
+                if (playPromise && typeof playPromise.then === "function") {
+                  playPromise.then(() => setIsPlaying(true)).catch(() => setIsPlaying(false));
+                } else {
+                  setIsPlaying(true);
                 }
-                return;
+                setCurrentTime(0);
               }
-            } catch (err) {
-              console.error("Audio availability check GET failed", err);
+              success = true;
+              return;
+            } else if (res.status === 405) {
+              try {
+                const r = await fetch(url, {
+                  method: "GET",
+                  headers: { Range: "bytes=0-0" },
+                });
+                if (r.ok) {
+                  if (cancelled) return;
+                  setAudioUrl(url);
+                  setHasAudio(true);
+                  setIsRetrying(false);
+                  setRetryMessage("");
+                  recoveryAttemptRef.current = 0;
+                  if (audioRef.current) {
+                    audioRef.current.src = url;
+                    audioRef.current.load();
+                    const playPromise = audioRef.current.play();
+                    if (playPromise && typeof playPromise.then === "function") {
+                      playPromise.then(() => setIsPlaying(true)).catch(() => setIsPlaying(false));
+                    } else {
+                      setIsPlaying(true);
+                    }
+                    setCurrentTime(0);
+                  }
+                  success = true;
+                  return;
+                }
+              } catch (err) {
+                console.error("Audio availability check GET failed", err);
+              }
             }
+          } catch (err) {
+            console.error(`Audio availability check failed for ${url} (Attempt ${attempt})`, err);
           }
-        } catch (err) {
-          console.error("Audio availability check failed for", url, err);
         }
       }
 
-      if (!cancelled) setHasAudio(false);
+      if (!cancelled && !success) {
+        setHasAudio(false);
+        setIsRetrying(false);
+        setRetryMessage("");
+      }
     };
 
     tryCandidates();
@@ -180,8 +234,74 @@ const AudioPlayer = ({
     const audio = audioRef.current;
     if (!audio) return;
 
-    const updateTime = () => setCurrentTime(audio.currentTime);
+    let stallWatchdog: NodeJS.Timeout | null = null;
+
+    const attemptRecovery = async () => {
+      const currentUrl = audioUrlRef.current;
+      if (!audio || !currentUrl) return;
+
+      if (recoveryAttemptRef.current >= 3) {
+        console.error("Max recovery attempts reached");
+        setHasAudio(false);
+        setIsPlaying(false);
+        setIsRetrying(false);
+        setRetryMessage("");
+        toast.error("تعذر الاتصال بالخادم لتشغيل الصوت.");
+        return;
+      }
+
+      recoveryAttemptRef.current += 1;
+      setIsRetrying(true);
+      setRetryMessage(`انقطع الاتصال. جارٍ إعادة الاتصال (محاولة ${recoveryAttemptRef.current} من 3)...`);
+
+      const wasPlaying = isPlayingRef.current;
+      const restoreTime = lastKnownTimeRef.current;
+
+      audio.pause();
+      setIsPlaying(false);
+
+      // Wait 2.5 seconds before reconnecting
+      await new Promise((resolve) => setTimeout(resolve, 2500));
+
+      audio.src = currentUrl;
+      audio.load();
+
+      const onCanPlay = () => {
+        if (restoreTime > 0) {
+          audio.currentTime = restoreTime;
+        }
+        if (wasPlaying) {
+          audio.play()
+            .then(() => {
+              setIsPlaying(true);
+              setIsRetrying(false);
+              setRetryMessage("");
+              recoveryAttemptRef.current = 0;
+              toast.success("تم استعادة الاتصال بنجاح واستئناف التلاوة.");
+            })
+            .catch((err) => {
+              console.error("Play failed after recovery:", err);
+            });
+        } else {
+          setIsRetrying(false);
+          setRetryMessage("");
+        }
+        audio.removeEventListener("canplay", onCanPlay);
+      };
+
+      audio.addEventListener("canplay", onCanPlay);
+    };
+
+    const updateTime = () => {
+      const time = audio.currentTime;
+      setCurrentTime(time);
+      if (time > 0) {
+        lastKnownTimeRef.current = time;
+      }
+    };
+
     const updateDuration = () => setDuration(audio.duration);
+
     const handleEnded = () => {
       setIsPlaying(false);
       
@@ -209,21 +329,78 @@ const AudioPlayer = ({
         onNextRef.current();
       }
     };
+
     const handleError = () => {
-      setHasAudio(false);
-      setIsPlaying(false);
+      console.error("Audio error event triggered.");
+      if (audioUrlRef.current && recoveryAttemptRef.current < 3) {
+        attemptRecovery();
+      } else {
+        setHasAudio(false);
+        setIsPlaying(false);
+        setIsRetrying(false);
+        setRetryMessage("");
+      }
+    };
+
+    const startStallWatchdog = () => {
+      if (!stallWatchdog && isPlayingRef.current && audioUrlRef.current) {
+        setIsRetrying(true);
+        setRetryMessage("ضعف في الاتصال. جارٍ الانتظار...");
+        stallWatchdog = setTimeout(() => {
+          console.warn("Stall watchdog triggered. Attempting recovery...");
+          attemptRecovery();
+          stallWatchdog = null;
+        }, 8000);
+      }
+    };
+
+    const clearStallWatchdog = () => {
+      if (stallWatchdog) {
+        clearTimeout(stallWatchdog);
+        stallWatchdog = null;
+      }
+      if (recoveryAttemptRef.current === 0) {
+        setIsRetrying(false);
+        setRetryMessage("");
+      }
+    };
+
+    const handleWaiting = () => {
+      startStallWatchdog();
+    };
+
+    const handleStalled = () => {
+      startStallWatchdog();
+    };
+
+    const handlePlaying = () => {
+      clearStallWatchdog();
+      recoveryAttemptRef.current = 0;
+    };
+
+    const handlePause = () => {
+      clearStallWatchdog();
     };
 
     audio.addEventListener("timeupdate", updateTime);
     audio.addEventListener("loadedmetadata", updateDuration);
     audio.addEventListener("ended", handleEnded);
     audio.addEventListener("error", handleError);
+    audio.addEventListener("waiting", handleWaiting);
+    audio.addEventListener("stalled", handleStalled);
+    audio.addEventListener("playing", handlePlaying);
+    audio.addEventListener("pause", handlePause);
 
     return () => {
       audio.removeEventListener("timeupdate", updateTime);
       audio.removeEventListener("loadedmetadata", updateDuration);
       audio.removeEventListener("ended", handleEnded);
       audio.removeEventListener("error", handleError);
+      audio.removeEventListener("waiting", handleWaiting);
+      audio.removeEventListener("stalled", handleStalled);
+      audio.removeEventListener("playing", handlePlaying);
+      audio.removeEventListener("pause", handlePause);
+      if (stallWatchdog) clearTimeout(stallWatchdog);
     };
   }, []);
 
@@ -330,7 +507,12 @@ const AudioPlayer = ({
                   </p>
                 </>
               )}
-              {!activeZekr && hasAudio === false && (
+              {isRetrying && (
+                <p className="text-xs text-amber-500 animate-pulse mt-1" dir="rtl">
+                  {retryMessage}
+                </p>
+              )}
+              {!activeZekr && !isRetrying && hasAudio === false && (
                 <p className="text-xs text-destructive mt-1">ملف الصوت غير متوفر لهذه السورة</p>
               )}            </div>
           </div>
@@ -395,8 +577,8 @@ const AudioPlayer = ({
               (!audioUrl || hasAudio === false || hasAudio === null) && "opacity-50 cursor-not-allowed"
             )}
           >
-            {hasAudio === null ? (
-              // Checking availability
+            {hasAudio === null || isRetrying ? (
+              // Checking availability or reconnecting
               <span className="inline-block animate-pulse text-sm">...</span>
             ) : isPlaying ? (
               <Pause className="h-8 w-8" />
