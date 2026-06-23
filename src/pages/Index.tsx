@@ -12,6 +12,7 @@ import { reciters, Reciter } from "@/data/reciters";
 import { surahs, Surah } from "@/data/surahs";
 import { radios, Radio } from "@/data/radios";
 import { sabahMasaaAzkar } from "@/data/sabahMasaaAzkar";
+import { Mail, Github } from "lucide-react";
 
 const Index = () => {
   const [selectedReciter, setSelectedReciter] = useState<Reciter | null>(null);
@@ -192,6 +193,31 @@ const Index = () => {
           </TabsContent>
         </Tabs>
       </main>
+
+      {/* Footer */}
+      <footer className="border-t border-border/40 mt-12 py-8 text-center text-sm text-muted-foreground bg-card/20 backdrop-blur-sm">
+        <div className="container mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-4" dir="rtl">
+          <p>© {new Date().getFullYear()} القرآن الكريم. جميع الحقوق محفوظة.</p>
+          <div className="flex items-center gap-6">
+            <a 
+              href="mailto:omar.adel.tech@gmail.com" 
+              className="hover:text-gold transition-colors flex items-center gap-2"
+            >
+              <Mail className="h-4 w-4 text-gold" />
+              <span>تواصل معنا: omar.adel.tech@gmail.com</span>
+            </a>
+            <a 
+              href="https://github.com/OmarAdelGalal" 
+              target="_blank" 
+              rel="noopener noreferrer" 
+              className="hover:text-gold transition-colors flex items-center gap-2"
+            >
+              <Github className="h-4 w-4 text-gold" />
+              <span>جيت هاب (GitHub)</span>
+            </a>
+          </div>
+        </div>
+      </footer>
 
       <AudioPlayer
         reciter={selectedReciter}
